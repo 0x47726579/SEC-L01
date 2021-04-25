@@ -50,6 +50,15 @@ fn move_logic(board: &mut Board) {
         // Clear line return from the line read
         coord = coord.trim_end_matches('\n').parse().unwrap();
         result = board.validate_move_coordinates(coord.as_str());
+        if result.0 {
+            result.0 = board.get_distance_to(result.1, result.2) <= Board::MAX_DIST;
+            if !result.0 {
+                println!(
+                    "You can't move that far! Movement is limited to {} blocs",
+                    Board::MAX_DIST
+                );
+            }
+        }
     }
     board.move_to(result.1, result.2);
     board.print().map_err(|err| println!("{:?}", err)).ok();

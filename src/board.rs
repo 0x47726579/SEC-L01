@@ -8,6 +8,7 @@ use crate::utils::abs;
 use core::option::Option::Some;
 use p::Player;
 use player as p;
+use rand::prelude::ThreadRng;
 use rand::Rng;
 use regex::Regex;
 use std::cmp::max;
@@ -36,7 +37,7 @@ impl Board {
 
     pub fn new() -> Self {
         let size = (Self::BOARD_WIDTH, Self::BOARD_HEIGHT);
-        let mut rng = rand::thread_rng();
+        let mut rng: ThreadRng = rand::thread_rng();
         let rand_point: Point = rng.gen();
         Self {
             board: vec![vec![Self::EMPTY_CHAR; size.0 as usize]; size.1 as usize],
@@ -55,7 +56,7 @@ impl Board {
         let x: usize = self.player.position.x as usize;
         let y: usize = self.player.position.y as usize;
 
-        // save and display position searched
+        // save position searched, also used for the display
         self.board[x][y] = Self::SEARCHED_CHAR;
 
         // we found the treasure
@@ -64,13 +65,9 @@ impl Board {
             self.treasure_found = true;
         } else {
             let distance = self.get_distance_to(self.treasure.x, self.treasure.y);
-            /* max(
-                abs(x as i32 - self.treasure.x as i32),
-                abs(y as i32 - self.treasure.y as i32),
-            );*/
             let buffer_writer = BufferWriter::stdout(ColorChoice::Always);
             let mut buffer = buffer_writer.buffer();
-
+            // The Treasure is X blocs away. (with highlight on X)
             buffer
                 .set_color(ColorSpec::new().set_fg(Some(Color::White)))
                 .map_err(|err| println!("{:?}", err))
@@ -110,6 +107,7 @@ impl Board {
     }
 
     /// gives the distance from the player
+    /// return u8: Distance between player and (x,y)
     pub fn get_distance_to(&self, x: u8, y: u8) -> u8 {
         max(
             abs(x as i32 - self.player.position.x as i32) as u8,
@@ -124,6 +122,7 @@ impl Board {
     /// A coordinate cannot be more than MAX_DIST away from the player
     ///
     /// This function goes through multiple checkpoints to validate a set of coordinates
+    /// It also ignores any space in the given string
     ///
     /// Return true On success.  false On failure to validate
     pub fn validate_move_coordinates(&self, coords: &str) -> (bool, u8, u8) {
@@ -169,6 +168,7 @@ impl Board {
         // parenthesis are ok, we now want to extract the coordinates and check them.
         let mut split: Vec<&str> = s.split(&['(', ')', '[', ']', ','][..]).collect();
         split.retain(|&i| i != "");
+
         if split.len() > MAX_DIMENSIONS {
             println!(
                 "Wrong number of coordinates: {} coordinates provided instead of {}.",
@@ -178,8 +178,12 @@ impl Board {
             return (false, 0, 0);
         }
 
+        // For each of the two coordinates we check the base and convert it if the range is valid
         let mut coords_as_u8 = vec![u8::MAX, u8::MAX];
         for i in 0..MAX_DIMENSIONS {
+            if split.get(i) == None {
+                return (false, 0, 0);
+            }
             // dealing with hex
             if split.get(i).unwrap().len() > 2 && split.get(i).unwrap()[..2].contains("0x") {
                 let without_prefix = split.get(i).unwrap().trim_start_matches("0x");
@@ -209,13 +213,13 @@ impl Board {
             return (false, 0, 0);
         };
 
-        if self.get_distance_to(coords_as_u8[0], coords_as_u8[1]) > Self::MAX_DIST {
-            println!(
-                "You can't move that far! Movement is limited to {} blocs",
-                Self::MAX_DIST
-            );
-            return (false, 0, 0);
-        }
+        // if self.get_distance_to(coords_as_u8[0], coords_as_u8[1]) > Self::MAX_DIST {
+        //     println!(
+        //         "You can't move that far! Movement is limited to {} blocs",
+        //         Self::MAX_DIST
+        //     );
+        //     return (false, 0, 0);
+        // }
 
         return (true, coords_as_u8[0], coords_as_u8[1]);
     }
@@ -337,5 +341,89 @@ impl Board {
         writeln!(&mut buffer)?;
         buffer.set_color(ColorSpec::new().set_fg(Some(Color::White)))?;
         return buffer_writer.print(&buffer);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use rstest::rstest;
+
+    // fn setup() -> Board {
+    //     Board::new()
+    // }
+
+    #[rstest(
+        x,
+        y,
+        expected,
+        case(0, 0, true), // edge case
+        case(0, 14, true), // edge case
+        case(14, 14, true), // edge case
+        case(15, 15, false), // edge case Out of bounds
+        case(255, 200, false), // Out of bounds
+        ::trace
+    )]
+    fn within_bounds_tests(x: u8, y: u8, expected: bool) {
+        let board = Board::new();
+        assert_eq!(board.is_within_bounds(x, y), expected);
+    }
+
+    #[rstest(
+    input,
+    expected,
+    case("(0,0)", (true,0,0)),  // edge case
+    case("(0, 14)", (true,0,14)),  // edge case
+    case("[14, 14]", (true,14,14)),  // edge case
+    case("(13, 13]", (false,0,0)),  // mismatched parentheses
+    case("{13, 13}", (false,0,0)),  // wrong parentheses
+    case("13, 13)", (false,0,0)),  // missing parentheses
+    case("[13, 13", (false,0,0)),  // missing parentheses
+    case("13, 13", (false,0,0)),  // missing parentheses
+    case("[13     ,   13   )", (false,0,0)),  // mismatched parentheses + spaces
+    case("(   1 3     ,   13   )", (true,13,13)),  // spaces
+    case("(-12,0)",(false,0,0)),  // negative values
+    case("(-12,-0)",(false,0,0)),  // negative values
+    case("(-1,-0xA)",(false,0,0)),  // negative values
+    case("(-0x3,-0xa)",(false,0,0)),  // negative values
+    case("(0,-0x0)",(false,0,0)),  // negative values
+    case("(,0x0)",(false,0,0)),  // incorrect input
+    case("(xa,0x0)",(false,0,0)),  // incorrect input
+    case("(0xa,x1)",(false,0,0)),  // incorrect input
+    case("(a,0x0)",(false,0,0)),  // incorrect input
+    case("(0x100,0x0)",(false,0,0)),  // out of bounds
+    ::trace
+    )]
+    fn coord_input_validation(input: &str, expected: (bool, u8, u8)) {
+        let board = Board::new();
+        assert_eq!(board.validate_move_coordinates(input), expected);
+    }
+
+    // Every search should only yield one searched square
+    #[test]
+    fn test_search() {
+        let mut board = Board::new();
+        for l in &board.board {
+            for c in l {
+                assert_ne!(c, &Board::SEARCHED_CHAR);
+            }
+        }
+        board.search();
+        let mut count = 0;
+        for l in &board.board {
+            for c in l {
+                count += (c == &Board::SEARCHED_CHAR) as i32;
+            }
+        }
+        assert_eq!(count, 1);
+        board.player.position.x = board.player.position.x + 1 % 15;
+        board.search();
+        count = 0;
+        for l in &board.board {
+            for c in l {
+                count += (c == &Board::SEARCHED_CHAR) as i32;
+            }
+        }
+        assert_eq!(count, 2);
     }
 }
