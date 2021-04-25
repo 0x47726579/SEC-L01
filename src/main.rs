@@ -1,82 +1,72 @@
-#[allow(dead_code)]
-use std::convert::From;
-use std::io::{self, Write};
+use std::io::{self, stdout, Write};
 
 use read_input::prelude::*;
-use regex::Regex;
 use termcolor::{BufferWriter, Color, ColorChoice, ColorSpec, WriteColor};
+
+use crate::board::Board;
 
 mod board;
 mod player;
 mod utils;
 
-static RE: &str = r"^(y|n)$";
-
 fn main() {
+    // Start a game
     let mut board = board::Board::new();
 
-    // Start a game
-    let usr_input = input()
-        .repeat_msg("Would you like to start a game of Treasure Hunt? [y/n] ")
-        .add_err_test(
-            |x: &String| {
-                Regex::new(RE)
-                    .unwrap()
-                    .is_match(&*String::from(x).to_lowercase())
-            },
-            "Incorrect input, please use 'Y', 'y' for 'yes' or 'N', 'n' for 'no'",
-        )
-        .get();
+    // print the rules
+    print_rules().map_err(|err| println!("{:?}", err)).ok();
 
-    if usr_input == "N" || usr_input == "n" {
-        println!("Bye Bye !");
-    } else {
-        // TODO print rules
-        match print_rules() {
-            Ok(_) => {}
-            Err(_) => println!("Something went wrong. Couldn't print the rules."),
+    ask_for_color(&mut board);
+
+    // print the updated board at the start of the round + simple error handling
+    board.print().map_err(|err| println!("{:?}", err)).ok();
+    while !board.treasure_found {
+        let usr_input = ask_for_action().to_lowercase();
+        match &*usr_input {
+            "1" | "move" => {
+                move_logic(&mut board);
+            }
+            "2" | "search" => {
+                board.search();
+            }
+            "3" | "help" => Board::print_help(),
+            "4" | "quit" => break,
+            _ => {}
         };
-        // TODO get player settings/color
-        loop {
-            let usr_input = input().repeat_msg("Choose one of the following:\n1. Move\n2. Search\n3. Quit\n")
-                .inside(["1".to_string(), "2".to_string(), "3".to_string(), "Move".to_string(), "Search".to_string(), "Quit".to_string()])
-                .err("You can only input a number from 1 to 3 included, or the command name displayed!").get();
-            // TODO this but properly
+    }
+}
 
-            match &*usr_input {
-                "1" | "Move" => {} // TODO move logic
-                "2" | "Search" => {
-                    let mut s: String = input().msg("Search coordinates:").get();
-                    s = s.chars().filter(|c| !c.is_whitespace()).collect();
-                    let split: Vec<&str> = s.split(&['(', ')', ','][..]).collect();
-                    println!("{:?}", split);
-                    search(
-                        &mut board.board,
-                        &(
-                            split[0].parse::<u8>().unwrap(),
-                            split[1].parse::<u8>().unwrap(),
-                        ),
-                    );
-                    // let mut s: String = input().msg("Format for search is (x,y)").get();
-                    // s = s.chars().filter(|c| !c.is_whitespace()).collect();
-                    // let split: Vec<&str> = s.split(&['(', ')', ','][..]).collect();
-                    // println!("{:?}", split);
-                    // search(
-                    //     &mut board.board,
-                    //     &(
-                    //         split[1].parse::<u8>().unwrap(),
-                    //         split[2].parse::<u8>().unwrap(),
-                    //     ),
-                    // );
-                } // TODO Search logic
-                "3" | "Quit" => break,
-                _ => {}
-            };
-            match board.print() {
-                Ok(_) => {}
-                Err(_) => println!("Something wrong during board print"),
-            };
+fn move_logic(board: &mut Board) {
+    let mut result: (bool, u8, u8) = (false, 0, 0);
+    let mut coord = String::new();
+    while !result.0 {
+        coord.clear();
+        print!("Move: ");
+        let _ = stdout().flush();
+        match io::stdin().read_line(&mut coord) {
+            Ok(_) => {}
+            Err(_) => println!("Something went wrong, couldn't get input."),
         }
+        // Clear line return from the line read
+        coord = coord.trim_end_matches('\n').parse().unwrap();
+        result = board.validate_move_coordinates(coord.as_str());
+    }
+    board.move_to(result.1, result.2);
+    board.print().map_err(|err| println!("{:?}", err)).ok();
+}
+
+fn ask_for_color(board: &mut Board) {
+    let mut usr_color = String::new();
+    while !board.player.set_color(usr_color.as_str()) {
+        usr_color.clear();
+        print!("Please choose your player colour, either in English or with an RGB value (e.g.: Green, 133,230,89): ");
+        let _ = stdout().flush();
+        match io::stdin().read_line(&mut usr_color) {
+            Ok(_) => {}
+            Err(_) => println!("Something went wrong, couldn't get input"),
+        }
+        // Clear line return from the line read
+        usr_color = usr_color.trim_end_matches('\n').parse().unwrap();
     }
 }
 
@@ -84,11 +74,10 @@ fn print_rules() -> io::Result<()> {
     let bufwtr = BufferWriter::stderr(ColorChoice::Always);
     let mut buffer = bufwtr.buffer();
     const WHITE: Option<Color> = Some(Color::White);
-    const HL: Option<Color> = Some(Color::Cyan);
+    const HL: Option<Color> = Some(Color::Green);
 
     buffer.set_color(ColorSpec::new().set_fg(WHITE))?;
-    write!(&mut buffer, "{}", "Welcome to the Treasure Hunt!\n")?;
-    buffer.set_color(ColorSpec::new().set_fg(WHITE))?;
+    writeln!(&mut buffer, "{}", "Welcome to the Treasure Hunt!\n")?;
     write!(&mut buffer, "{}", "You can ")?;
     buffer.set_color(ColorSpec::new().set_fg(HL))?;
     write!(&mut buffer, "{}", "Move")?;
@@ -100,15 +89,30 @@ fn print_rules() -> io::Result<()> {
     buffer.set_color(ColorSpec::new().set_fg(WHITE))?;
     writeln!(&mut buffer, "{}", " for the Treasure! Good Luck...")?;
 
-    writeln!(&mut buffer, "{}", "\t[*] Search will take one action, it lets you search for the Treasure on your current coordinates.")?;
-    writeln!(&mut buffer, "{}", "\t[*] \"Move (x,y)\" or \"Move [x,y]\" to go to a coordinate.\n\t[*] You can only move within the board and you can only Move 4 blocks away at most.")?;
+    writeln!(&mut buffer, "\t[*] Search will take one action, it lets you search for the Treasure on your current coordinates.")?;
+    writeln!(&mut buffer, "\t[*] \"Move (x,y)\" or \"Move [x,y]\" to go to a coordinate.\n\t[*] You can only move within the board and you can only Move {} blocs away at most.",Board::MAX_DIST)?;
+    writeln!(&mut buffer, "You are represented by the character '{}' on the map, an '{}' signifies you have searched the area, and a '#' is a wall.\n",Board::PLAYER_CHAR, Board::SEARCHED_CHAR)?;
 
     return bufwtr.print(&buffer);
 }
 
-fn search(board: &mut Vec<Vec<char>>, point: &(u8, u8)) {
-    let x: usize = point.0 as usize;
-    let y: usize = point.1 as usize;
-
-    board[x][y] = board::Board::SEARCHED_CHAR;
+/// At the start of each turn the player is asked for an action that can be chosen from a menu
+/// This function enables us to print the menu and get the user's input
+fn ask_for_action() -> String {
+    input()
+        .repeat_msg(
+            "Choose one of the following:\n1. Move          3. Help\n2. Search        4. Quit\n",
+        )
+        .inside([
+            "1".to_string(),
+            "2".to_string(),
+            "3".to_string(),
+            "4".to_string(),
+            "Move".to_string(),
+            "Search".to_string(),
+            "Help".to_string(),
+            "Quit".to_string(),
+        ])
+        .err("You can only input a number from 1 to 4 included, or the command name displayed!")
+        .get()
 }
