@@ -1,8 +1,5 @@
 use std::io::{self, stdout, Write};
 
-use read_input::prelude::*;
-use termcolor::{BufferWriter, Color, ColorChoice, ColorSpec, WriteColor};
-
 use crate::board::Board;
 
 mod board;
@@ -14,14 +11,16 @@ fn main() {
     let mut board = board::Board::new();
 
     // print the rules
-    print_rules().map_err(|err| println!("{:?}", err)).ok();
+    utils::print_rules()
+        .map_err(|err| println!("{:?}", err))
+        .ok();
 
     ask_for_color(&mut board);
 
     // print the updated board at the start of the round + simple error handling
     board.print().map_err(|err| println!("{:?}", err)).ok();
     while !board.treasure_found {
-        let usr_input = ask_for_action().to_lowercase();
+        let usr_input = utils::ask_for_action().to_lowercase();
         match &*usr_input {
             "1" | "move" => {
                 move_logic(&mut board);
@@ -77,51 +76,4 @@ fn ask_for_color(board: &mut Board) {
         // Clear line return from the line read
         usr_color = usr_color.trim_end_matches('\n').parse().unwrap();
     }
-}
-
-fn print_rules() -> io::Result<()> {
-    let bufwtr = BufferWriter::stderr(ColorChoice::Always);
-    let mut buffer = bufwtr.buffer();
-    const WHITE: Option<Color> = Some(Color::White);
-    const HL: Option<Color> = Some(Color::Green);
-
-    buffer.set_color(ColorSpec::new().set_fg(WHITE))?;
-    writeln!(&mut buffer, "{}", "Welcome to the Treasure Hunt!\n")?;
-    write!(&mut buffer, "{}", "You can ")?;
-    buffer.set_color(ColorSpec::new().set_fg(HL))?;
-    write!(&mut buffer, "{}", "Move")?;
-    buffer.set_color(ColorSpec::new().set_fg(WHITE))?;
-    write!(&mut buffer, "{}", " around the place to ")?;
-
-    buffer.set_color(ColorSpec::new().set_fg(HL))?;
-    write!(&mut buffer, "{}", "Search")?;
-    buffer.set_color(ColorSpec::new().set_fg(WHITE))?;
-    writeln!(&mut buffer, "{}", " for the Treasure! Good Luck...")?;
-
-    writeln!(&mut buffer, "\t[*] Search will take one action, it lets you search for the Treasure on your current coordinates.")?;
-    writeln!(&mut buffer, "\t[*] \"Move (x,y)\" or \"Move [x,y]\" to go to a coordinate.\n\t[*] You can only move within the board and you can only Move {} blocs away at most.",Board::MAX_DIST)?;
-    writeln!(&mut buffer, "You are represented by the character '{}' on the map, an '{}' signifies you have searched the area, and a '#' is a wall.\n",Board::PLAYER_CHAR, Board::SEARCHED_CHAR)?;
-
-    return bufwtr.print(&buffer);
-}
-
-/// At the start of each turn the player is asked for an action that can be chosen from a menu
-/// This function enables us to print the menu and get the user's input
-fn ask_for_action() -> String {
-    input()
-        .repeat_msg(
-            "Choose one of the following:\n1. Move          3. Help\n2. Search        4. Quit\n",
-        )
-        .inside([
-            "1".to_string(),
-            "2".to_string(),
-            "3".to_string(),
-            "4".to_string(),
-            "Move".to_string(),
-            "Search".to_string(),
-            "Help".to_string(),
-            "Quit".to_string(),
-        ])
-        .err("You can only input a number from 1 to 4 included, or the command name displayed!")
-        .get()
 }
