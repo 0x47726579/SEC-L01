@@ -349,10 +349,6 @@ mod test {
     use super::*;
     use rstest::rstest;
 
-    // fn setup() -> Board {
-    //     Board::new()
-    // }
-
     #[rstest(
         x,
         y,

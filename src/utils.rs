@@ -47,6 +47,7 @@ impl Distribution<Point> for Standard {
     }
 }
 
+/// Takes a string of a colour in English and checks if it's known
 pub fn check_color(color: &str) -> bool {
     let colors = [
         "Black", "Blue", "Green", "Red", "Cyan", "Magenta", "Yellow", "White",
@@ -63,24 +64,31 @@ pub fn check_color(color: &str) -> bool {
     }
 }
 
-/// Helper function to convert hexadecimal number to base 10
-///
-/// Hex number should start with "0x"
-///
-/// returns u8
-pub fn hex_decode(hex_string: &str) -> u8 {
-    let without_prefix = hex_string.trim_start_matches("0x");
-    match u8::from_str_radix(without_prefix, 16) {
-        Ok(res) => res,
-        Err(_) => 0 as u8,
-    }
-}
-
 /// simple function to return the absolute value of an i32
 pub fn abs(x: i32) -> i32 {
     if x >= 0 {
         x
     } else {
         -x
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest(
+        input,
+        expected,
+        case("Green", true),
+        case("Blue", true),
+        case("Cyam", false),  // misspelled 
+        case("Black", true),
+        case("0,0,0", false),  // not tested here
+        ::trace
+    )]
+    fn utils_color_tests(input: &str, expected: bool) {
+        assert_eq!(check_color(input), expected);
     }
 }

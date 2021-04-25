@@ -72,3 +72,27 @@ impl Player {
         return false;
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest(
+    input,
+    expected,
+    case("Green", true),
+    case("Blue", true),
+    case("Cyam", false),  // misspelled 
+    case("Black", true),
+    case("0,0,0", true),  // edge case
+    case("255,255,255", true),  // edge case
+    case("256,256,256", false),  // out of bonds
+    case("0x0,0x0,0x0", false),  // hex isn't supported 
+    ::trace
+    )]
+    fn player_color_tests(input: &str, expected: bool) {
+        let mut player = Player::new();
+        assert_eq!(player.set_color(input), expected);
+    }
+}
